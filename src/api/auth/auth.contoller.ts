@@ -1,9 +1,9 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-import { Controller, Post, Body, Get, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Req } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { JwtAuthGuard } from './jwt-auth.gurad';
-import { GetUser } from 'src/decorators/get-user.decorator';
-import { User } from './user.entity';
+import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -12,12 +12,16 @@ export class AuthController {
   @Post('check-company')
   async checkCompany(@Body('name') name: string) {
     const exists = await this.authService.checkCompany(name);
-    return { exists };
+    // return { exists };
+    return {
+      exists: exists,
+      success: true,
+      message: exists ? 'Congratulations!' : 'Compnay With same name Exists',
+    };
   }
 
   @Post('register-company')
   async registerCompany(@Body('name') name: string) {
-    console.log(name);
     const company = await this.authService.createCompany(name);
     return { id: company.id, name: company.name };
   }
@@ -47,11 +51,9 @@ export class AuthController {
     return { email, password, token, userId };
   }
 
-  @Get('me')
   @UseGuards(JwtAuthGuard)
-  async me(@GetUser() user: User) {
-    const userId = user.id;
-    const profile = await this.authService.me(userId);
-    return profile;
+  @Get('me')
+  async getMe(@Req() req) {
+    return this.authService.getMe(req.user.userId); // `userId` should come from JWT payload
   }
 }

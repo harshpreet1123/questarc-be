@@ -5,16 +5,19 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User } from './user.entity';
-import { Company } from './company.entity';
+import { User } from '../../entities/user.entity';
+import { Company } from '../../entities/company.entity';
 import * as bcrypt from 'bcryptjs';
 import { JwtService } from '@nestjs/jwt';
+import { UserCompany } from 'src/entities/user-company.entity';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(Company) private companyRepo: Repository<Company>,
+    @InjectRepository(UserCompany)
+    private userCompanyRepo: Repository<UserCompany>,
     private jwtService: JwtService,
   ) {}
 
@@ -50,12 +53,19 @@ export class AuthService {
       email,
       password: hashedPassword,
       name,
-      company,
     });
     await this.userRepo.save(user);
 
-    const token = this.jwtService.sign({ userId: user.id, email: user.email });
+    const userCompany = this.userCompanyRepo.create({
+      user,
+      company,
+      role: 'admin',
+      designatedRole: 'Owner',
+      invitedBy: user,
+    });
+    await this.userCompanyRepo.save(userCompany);
 
+    const token = this.jwtService.sign({ userId: user.id });
     return { token, userId: user.id };
   }
 
@@ -65,7 +75,7 @@ export class AuthService {
   ): Promise<{ token: string; userId: string }> {
     const user = await this.userRepo.findOne({
       where: { email },
-      relations: ['company'],
+      relations: ['userCompanies'], // Add this
     });
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
@@ -77,28 +87,30 @@ export class AuthService {
     return { token, userId: user.id };
   }
 
-  async me(userId: string): Promise<{
-    id: string;
-    email: string;
-    name: string;
-    company: { id: string; name: string };
-  }> {
+  async getMe(userId: string) {
     const user = await this.userRepo.findOne({
       where: { id: userId },
-      relations: ['company'],
+      relations: [
+        'userCompanies',
+        'userCompanies.company',
+        'userCompanies.invitedBy',
+      ],
     });
-  
+
     if (!user) throw new UnauthorizedException('User not found');
-  
+
+    const companies = user.userCompanies.map((uc) => ({
+      companyId: uc.company.id,
+      companyName: uc.company.name,
+      role: uc.role,
+      designatedRole: uc.designatedRole,
+    }));
+
     return {
       id: user.id,
       email: user.email,
       name: user.name,
-      company: {
-        id: user.company.id,
-        name: user.company.name,
-      },
+      companies,
     };
   }
-  
 }
